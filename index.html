@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>药材烘干问题 · 三维动态结果演示</title>
+<link rel="stylesheet" href="assets/app.css">
+</head>
+<body>
+
+<header class="appbar">
+  <div class="brand">
+    <h1>药材烘干问题<em>·</em>三维动态结果演示</h1>
+    <p id="sub">2026 CUMCM A 题 · 圆柱药材 φ4 cm × 25 cm · 一维径向热质耦合模型</p>
+  </div>
+  <nav class="tabs" id="qtabs" aria-label="问题"></nav>
+</header>
+
+<main>
+  <aside class="col left">
+
+    <section class="card">
+      <h2 class="overline">视图</h2>
+      <div class="seg" id="viewseg" role="tablist">
+        <button data-v="cyl" class="on">药材柱体</button>
+        <button data-v="surf">时空曲面</button>
+        <button data-v="env">烘房环境</button>
+      </div>
+      <h2 class="overline">物理量</h2>
+      <div class="seg" id="fieldseg">
+        <button data-f="T">温度</button>
+        <button data-f="C" class="on">水分浓度</button>
+      </div>
+      <h2 class="overline">显示</h2>
+      <div class="chips">
+        <label class="fchip">
+          <input type="checkbox" id="ck-x" checked>
+          <span>半径放大 <i id="xg">×2.5</i></span>
+        </label>
+        <label class="fchip">
+          <input type="checkbox" id="ck-th" checked>
+          <span>0.15 等值面</span>
+        </label>
+        <label class="fchip">
+          <input type="checkbox" id="ck-spin">
+          <span>自动旋转</span>
+        </label>
+      </div>
+      <p class="support" id="view-hint"></p>
+    </section>
+
+    <section class="card">
+      <h2 class="overline">当前时刻读数</h2>
+      <div class="tline"><span class="tlabel">时刻</span><b id="ro-t">—</b></div>
+      <div class="tline"><span class="tlabel">中心 r = 0</span><b id="ro-c">—</b></div>
+      <div class="tline"><span class="tlabel">表面 r = R</span><b id="ro-s">—</b></div>
+      <div class="tline"><span class="tlabel">最大值</span><b id="ro-m">—</b></div>
+      <div class="tline" id="ro-rline" hidden><span class="tlabel">当前半径 R(t)</span><b id="ro-r">—</b></div>
+      <div class="chip" id="ro-chip">—</div>
+    </section>
+
+    <section class="card">
+      <h2 class="overline">色标 <span class="unit" id="cb-unit"></span></h2>
+      <div class="seg small" id="rangeseq">
+        <button data-r="default" class="on">全程固定</button>
+        <button data-r="zoom">阈值区</button>
+      </div>
+      <canvas id="cbar" width="512" height="34"></canvas>
+      <div class="cbar-lab"><span id="cb-min">—</span><span id="cb-mid"></span><span id="cb-max">—</span></div>
+      <div class="seg small" id="cmapseg"></div>
+    </section>
+  </aside>
+
+  <div class="stage">
+    <canvas id="gl"></canvas>
+    <div class="hud" id="hud-note"></div>
+    <div class="hud hud-br" id="hud-legend"></div>
+    <div class="tip" id="tip" hidden></div>
+  </div>
+
+  <aside class="col right">
+    <section class="card accent">
+      <h2 class="overline" id="p-head">—</h2>
+      <div class="head-grid" id="headline"></div>
+    </section>
+    <section class="card">
+      <h2 class="overline">口径</h2>
+      <div id="props"></div>
+      <p class="support" id="envnote"></p>
+    </section>
+    <section class="card">
+      <h2 class="overline">校核</h2>
+      <div id="checks"></div>
+    </section>
+    <section class="card">
+      <h2 class="overline">数据来源</h2>
+      <p class="support" id="srcnote"></p>
+    </section>
+  </aside>
+</main>
+
+<footer class="playbar">
+  <button class="btn filled icon" id="btn-play" aria-label="播放">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg>
+  </button>
+  <div class="seg small speed" id="speedseg">
+    <button data-s="0.5">0.5×</button>
+    <button data-s="1" class="on">1×</button>
+    <button data-s="2">2×</button>
+    <button data-s="5">5×</button>
+  </div>
+  <div class="tl-wrap">
+    <input type="range" id="scrub" min="0" max="10000" value="0" step="1" aria-label="时间">
+    <div class="ticks" id="ticks"></div>
+  </div>
+  <div class="tnow" id="tnow">—</div>
+  <button class="btn tonal" id="btn-reset">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5V1L7 6l5 5V7a5 5 0 1 1-5 5H5a7 7 0 1 0 7-7z"/></svg>
+    恢复视角
+  </button>
+</footer>
+
+<script src="assets/three.min.js"></script>
+<script src="assets/colormaps.js"></script>
+<script src="data/meta.js"></script>
+<script src="data/frames_q1.js"></script>
+<script src="data/frames_q2.js"></script>
+<script src="data/frames_q4.js"></script>
+<script src="assets/app.js"></script>
+</body>
+</html>
