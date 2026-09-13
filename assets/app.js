@@ -87,14 +87,17 @@
     bindControls();
     bindHover();
     initHover();
-    resize();
-    window.addEventListener('resize', resize);
-    if (window.ResizeObserver) new ResizeObserver(resize).observe(canvas.parentElement);
+    resize(true);
+    window.addEventListener('resize', function () { resize(true); });
+    if (window.ResizeObserver) new ResizeObserver(function () { resize(true); }).observe(canvas.parentElement);
   }
   function amb(i, x, y, z) { var d = new THREE.DirectionalLight(0xffffff, i); d.position.set(x, y, z); return d; }
-  function resize() {
+  var lastW = 0, lastH = 0;
+  function resize(force) {
     var w = canvas.parentElement.clientWidth, h = canvas.parentElement.clientHeight;
     if (!w || !h) return;
+    if (!force && w === lastW && h === lastH) return;
+    lastW = w; lastH = h;
     renderer.setSize(w, h, false);
     cam.aspect = w / h; cam.updateProjectionMatrix();
     slideAll();
@@ -305,14 +308,15 @@
     var drag = null;
     canvas.addEventListener('contextmenu', function (e) { e.preventDefault(); });
     canvas.addEventListener('pointerdown', function (e) {
-      canvas.setPointerCapture(e.pointerId);
-      drag = { x: e.clientX, y: e.clientY, pan: e.button === 2 || e.shiftKey };
+      drag = { x: e.clientX, y: e.clientY, pan: e.button === 2 || e.shiftKey, moved: 0 };
       dragging = true; hideTip();
+      try { canvas.setPointerCapture(e.pointerId); } catch (err) { }
     });
     canvas.addEventListener('pointermove', function (e) {
       if (!drag) return;
       var dx = e.clientX - drag.x, dy = e.clientY - drag.y;
       drag.x = e.clientX; drag.y = e.clientY;
+      drag.moved += Math.abs(dx) + Math.abs(dy);
       var k = CAM.dist * 0.0016;
       if (drag.pan) {
         var ce = Math.cos(CAM.el), se = Math.sin(CAM.el);
@@ -326,7 +330,16 @@
         CAM.el = clamp(CAM.el - dy * 0.005, 0.12, Math.PI - 0.12);
       }
     });
-    canvas.addEventListener('pointerup', function () { drag = null; dragging = false; });
+    canvas.addEventListener('pointerup', function (e) {
+      var tap = drag && drag.moved < 8;
+      drag = null; dragging = false;
+      if (tap) {
+        var box = canvas.getBoundingClientRect();
+        hoverAt = { x: e.clientX - box.left, y: e.clientY - box.top };
+        hoverKey = '';
+        updateHover();
+      }
+    });
     canvas.addEventListener('pointercancel', function () { drag = null; dragging = false; });
     canvas.addEventListener('wheel', function (e) {
       e.preventDefault();
@@ -938,7 +951,7 @@
     });
   }
 
-  var last = 0, DUR = 26, errShown = false;
+  var last = 0, DUR = 26, errShown = false, slideTick = 0;
   function showErr(m) {
     if (errShown) return;
     errShown = true;
@@ -948,6 +961,8 @@
   function loop(ms) {
     var dt = Math.min((ms - last) / 1000, 0.06); last = ms;
     try {
+      resize();
+      if ((slideTick++ % 15) === 0) slideAll();
       if (S.spin && !S.playing) CAM.az += dt * 0.16;
       if (S.playing) {
         var nt = S.t + dt / DUR * prob().t_end_s * S.speed;
