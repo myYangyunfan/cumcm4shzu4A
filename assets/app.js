@@ -81,8 +81,8 @@
     scene = new THREE.Scene();
     cam = new THREE.PerspectiveCamera(34, 1, 0.5, 4000);
     scene.add(new THREE.HemisphereLight(0xffffff, 0xcfe0e8, 0.78));
-    scene.add(amb(0.28, 30, 46, 26));
-    scene.add(amb(0.14, -34, -20, -22));
+    var dl1 = new THREE.DirectionalLight(0xffffff, 0.28); dl1.position.set(30, 46, 26); scene.add(dl1);
+    var dl2 = new THREE.DirectionalLight(0xffffff, 0.14); dl2.position.set(-34, -20, -22); scene.add(dl2);
     root = new THREE.Group(); scene.add(root);
     bindControls();
     bindHover();
@@ -91,7 +91,6 @@
     window.addEventListener('resize', function () { resize(true); });
     if (window.ResizeObserver) new ResizeObserver(function () { resize(true); }).observe(canvas.parentElement);
   }
-  function amb(i, x, y, z) { var d = new THREE.DirectionalLight(0xffffff, i); d.position.set(x, y, z); return d; }
   var lastW = 0, lastH = 0;
   function resize(force) {
     var w = canvas.parentElement.clientWidth, h = canvas.parentElement.clientHeight;
@@ -229,8 +228,9 @@
     for (i = 0; i < SLIDE_IDS.length; i++) slideSync(document.getElementById(SLIDE_IDS[i]));
   }
 
-  var HOVER = null;
+  var pickObjs = null;
   var hoverDot = null, ray = new THREE.Raycaster(), dragging = false;
+  var hoverAt = null, hoverKey = '';
 
   function initHover() {
     hoverDot = new THREE.Mesh(new THREE.SphereGeometry(0.34, 14, 10),
@@ -238,41 +238,33 @@
     hoverDot.visible = false; hoverDot.renderOrder = 20;
     scene.add(hoverDot);
   }
-  function tipHTML(r) {
-    return '<div class="tip-t">' + r.title + '</div>' + r.rows.map(function (x) {
-      return '<div class="tip-r"><span>' + x[0] + '</span><b>' + x[1] + '</b></div>';
-    }).join('');
-  }
   function hideTip() {
     var el = document.getElementById('tip');
     if (el) el.hidden = true;
     if (hoverDot) hoverDot.visible = false;
   }
-  function readRod(p) {
-    var amp = S.ampOn ? S.amp : 1;
-    var rDisp = Math.sqrt(p.x * p.x + p.z * p.z);
-    var sT = sample(S.t, 'T'), sC = sample(S.t, 'C');
-    var r = clamp(rDisp / amp, 0, sC.R);
-    return {
-      title: '到中心距离 r = ' + r.toFixed(3) + ' cm',
-      rows: [
-        ['温度', interpAt(sT.v, r).toFixed(2) + ' ℃'],
-        ['水分浓度', interpAt(sC.v, r).toFixed(4) + ' kg/kg'],
-        ['含水率（湿基）', (interpAt(sC.v, r) / (1 + interpAt(sC.v, r)) * 100).toFixed(2) + ' %']
-      ]
-    };
+  function row(k, v) {
+    return '<div class="tip-r"><span>' + k + '</span><b>' + v + '</b></div>';
   }
-  function readSurf(p) {
-    var t = clamp((p.x + SURF.XL / 2) / SURF.XL, 0, 1) * SURF.T_END;
+  function readPoint(p) {
+    var t, r;
+    if (S.view === 'cyl') {
+      r = Math.sqrt(p.x * p.x + p.z * p.z) / (S.ampOn ? S.amp : 1);
+      t = S.t;
+    } else {
+      t = clamp((p.x + SURF.XL / 2) / SURF.XL, 0, 1) * SURF.T_END;
+      r = p.z / SURF.ZS + 1;
+    }
     var sT = sample(t, 'T'), sC = sample(t, 'C');
-    var r = clamp(p.z / SURF.ZS + 1, 0, sC.R);
-    return {
-      title: 't = ' + (t / 3600).toFixed(2) + ' h · r = ' + r.toFixed(3) + ' cm',
-      rows: [
-        ['温度', interpAt(sT.v, r).toFixed(2) + ' ℃'],
-        ['水分浓度', interpAt(sC.v, r).toFixed(4) + ' kg/kg']
-      ]
-    };
+    r = clamp(r, 0, sC.R);
+    var c = interpAt(sC.v, r);
+    var head = S.view === 'cyl'
+      ? '到中心距离 r = ' + r.toFixed(3) + ' cm'
+      : 't = ' + (t / 3600).toFixed(2) + ' h · r = ' + r.toFixed(3) + ' cm';
+    return '<div class="tip-t">' + head + '</div>' +
+      row('温度', interpAt(sT.v, r).toFixed(2) + ' ℃') +
+      row('水分浓度', c.toFixed(4) + ' kg/kg') +
+      row('含水率（湿基）', (c / (1 + c) * 100).toFixed(2) + ' %');
   }
   function bindHover() {
     canvas.addEventListener('pointermove', function (e) {
@@ -282,9 +274,12 @@
     });
     canvas.addEventListener('pointerleave', function () { hoverAt = null; hideTip(); });
   }
-  var hoverAt = null, hoverKey = '';
   function updateHover() {
-    if (!hoverAt || !HOVER || dragging) { hoverDot.visible = false; hoverKey = ''; return; }
+    var el = document.getElementById('tip');
+    if (!hoverAt || !pickObjs || dragging) {
+      hoverDot.visible = false; hoverKey = ''; el.hidden = true;
+      return;
+    }
     var key = hoverAt.x + ',' + hoverAt.y + ',' + S.t + ',' + S.view;
     if (key === hoverKey) return;
     hoverKey = key;
@@ -293,11 +288,10 @@
       x: (hoverAt.x / box.width) * 2 - 1,
       y: -(hoverAt.y / box.height) * 2 + 1
     }, cam);
-    var hit = ray.intersectObjects(HOVER.objs, false)[0];
+    var hit = ray.intersectObjects(pickObjs, false)[0];
     if (!hit) { hideTip(); return; }
     hoverDot.position.copy(hit.point); hoverDot.visible = true;
-    var el = document.getElementById('tip');
-    el.innerHTML = tipHTML(HOVER.read(hit.point));
+    el.innerHTML = readPoint(hit.point);
     el.hidden = false;
     var w = el.offsetWidth, h = el.offsetHeight;
     el.style.left = Math.max(8, Math.min(hoverAt.x + 14, box.width - w - 8)) + 'px';
@@ -754,30 +748,28 @@
     if (S.view === 'cyl') { updateRod(S.t); scaleRod(); }
     else if (S.view === 'surf') updateSurf(S.t);
     else updateEnv(S.t);
-    HOVER = (S.view === 'cyl' && ROD) ? { objs: [ROD.mesh], read: readRod }
-      : (S.view === 'surf' && SURF) ? { objs: [SURF.mesh], read: readSurf } : null;
+    pickObjs = S.view === 'cyl' && ROD ? [ROD.mesh] : (S.view === 'surf' && SURF ? [SURF.mesh] : null);
     hud(); applyCam();
   }
 
   function hud() {
     var p = prob(), f = FIELD[S.field], rng = range(), out = [];
     if (S.view === 'cyl') {
-      out.push('<b>剖切柱体</b>：保留 240°、剖开 120° 楔口以露出内部径向分布；颜色即该处的' + f.name + '。');
-      out.push(S.ampOn ? '半径方向已放大 <b>' + S.amp + '×</b>（真实半径 2 cm、长 25 cm，长度不放大）。'
-        : '按真实比例绘制（半径 2 cm、长 25 cm）。');
-      if (S.q === 'q4') out.push('柱体半径随附件 2 收缩：R(t) 由 2.00 cm 降至 1.20 cm；地面虚线为初始半径 2 cm，柱体与它的间隙即收缩量。');
+      out.push('<b>剖切柱体</b>　缺口 120°　·　颜色 = ' + f.name);
+      out.push(S.ampOn ? '半径放大 <b>' + S.amp + '×</b>　·　长度 25 cm 不放大' : '真实比例　·　半径 2 cm / 长 25 cm');
+      if (S.q === 'q4') out.push('R(t) 随附件 2 收缩 2.00 → 1.20 cm　·　地面虚线 = 初始半径 2 cm');
       if (S.field === 'C' && S.thOn) out.push(ROD && ROD.front
-        ? '珊瑚色壳层 = 水分浓度 0.15 的等值面，即已干燥层的边界（表面降至 0.15 以下后才出现）。'
-        : '水分浓度 0.15 的等值面尚未形成（全剖面都高于 0.15）。');
+        ? '珊瑚色壳层 = 0.15 等值面（已干燥层边界）'
+        : '0.15 等值面尚未形成（全剖面 &gt; 0.15）');
     } else if (S.view === 'surf') {
-      out.push('<b>时空曲面</b>：横轴时间、纵深半径、高度为' + f.name + '；r=0 那条边就是 Cmax(t)，即判据所看的量。');
-      if (S.field === 'C') out.push('珊瑚色半透明面为 0.15 阈值面，曲面穿到它下面即达标。');
-      if (S.q === 'q4') out.push('曲面右端随半径收缩而收窄，收窄的边界即药材表面 r=R(t)。');
+      out.push('<b>时空曲面</b>　横轴时间 / 纵深半径 / 高度 = ' + f.name + '　·　r=0 边即 Cmax(t)');
+      if (S.field === 'C') out.push('珊瑚色面 = 0.15 阈值面　·　穿到其下即达标');
+      if (S.q === 'q4') out.push('右端收窄的边界 = 药材表面 r=R(t)');
     } else {
-      out.push('<b>烘房环境</b>：上带温度、下带水分浓度，均取自附件 1。');
+      out.push('<b>烘房环境</b>　上带温度 / 下带水分浓度　·　均取自附件 1');
       out.push(p.t_end_s > META.env.horizon_s
-        ? '带体实色段 = 0–' + (META.env.horizon_s / 3600).toFixed(0) + ' h 实测，浅色段与其上方的虚线 = 之后按末段均值外推的平台。'
-        : '本问时程 < 4 h，带体全部落在实测段内。');
+        ? '实色 = 0–' + (META.env.horizon_s / 3600).toFixed(0) + ' h 实测　·　浅色 + 虚线 = 平台外推'
+        : '本问时程 &lt; 4 h　·　全在实测段内');
     }
     document.getElementById('hud-note').innerHTML = out.join(' ');
     var lg;
@@ -806,11 +798,11 @@
     var f = FIELD[S.field], nd = f.nd, s = sample(S.t, S.field);
     var c = s.v[0], sf = s.vs, mx = validMax(s.v, s.k);
     document.getElementById('ro-t').textContent = fmtT(S.t);
-    document.getElementById('ro-c').innerHTML = c.toFixed(nd) + u(f.unit);
-    document.getElementById('ro-s').innerHTML = sf.toFixed(nd) + u(f.unit);
-    document.getElementById('ro-m').innerHTML = mx.toFixed(nd) + u(f.unit);
+    document.getElementById('ro-c').innerHTML = c.toFixed(nd) + unit(f.unit);
+    document.getElementById('ro-s').innerHTML = sf.toFixed(nd) + unit(f.unit);
+    document.getElementById('ro-m').innerHTML = mx.toFixed(nd) + unit(f.unit);
     document.getElementById('ro-rline').hidden = S.q !== 'q4';
-    if (S.q === 'q4') document.getElementById('ro-r').innerHTML = s.R.toFixed(4) + u('cm');
+    if (S.q === 'q4') document.getElementById('ro-r').innerHTML = s.R.toFixed(4) + unit('cm');
     var chip = document.getElementById('ro-chip');
     if (S.field === 'C') {
       var ok = mx <= TH;
@@ -823,7 +815,7 @@
     }
     document.getElementById('tnow').textContent = fmtT(S.t);
   }
-  function u(x) { return ' <span style="font-size:.72rem;color:#4a75b2">' + x + '</span>'; }
+  function unit(x) { return ' <span style="font-size:.72rem;color:#4a75b2">' + x + '</span>'; }
 
   function renderStatic() {
     var p = prob();
